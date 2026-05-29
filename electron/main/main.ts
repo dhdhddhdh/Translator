@@ -655,6 +655,15 @@ function startRealtimeMonitoring(selection: SelectionBounds) {
   void runMonitorTick();
 }
 
+app.on("certificate-error", (event, _webContents, _url, _error, _cert, callback) => {
+  if (!settingsCache.tlsVerify) {
+    event.preventDefault();
+    callback(true);
+  } else {
+    callback(false);
+  }
+});
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.openai.screen-translator");
 

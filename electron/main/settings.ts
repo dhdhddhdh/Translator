@@ -22,7 +22,8 @@ const defaultSettings: AppSettings = {
   fontSize: 18,
   opacity: 1,
   realtimeEnabled: false,
-  theme: "dark"
+  theme: "dark",
+  tlsVerify: true
 };
 
 function getSettingsPath() {

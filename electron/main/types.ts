@@ -22,6 +22,7 @@ export type AppSettings = {
   opacity: number;
   realtimeEnabled: boolean;
   theme: "dark" | "light";
+  tlsVerify: boolean;
 };
 
 export type SelectionBounds = {

@@ -90,7 +90,8 @@ const defaultSettings: AppSettings = {
   fontSize: 18,
   opacity: 1,
   realtimeEnabled: false,
-  theme: "dark"
+  theme: "dark",
+  tlsVerify: true
 };
 
 export function App() {
@@ -480,6 +481,12 @@ function SettingsDialog({
             </Field>
             <Field label={text.model}>
               <input type="text" value={settings.model} onChange={(event) => onChange({ ...settings, model: event.target.value })} />
+            </Field>
+            <Field label="TLS 验证">
+              <select value={settings.tlsVerify ? "true" : "false"} onChange={(event) => onChange({ ...settings, tlsVerify: event.target.value === "true" })}>
+                <option value="true">启用（推荐）</option>
+                <option value="false">禁用（自签名证书）</option>
+              </select>
             </Field>
             <Field label={text.sourceLanguage}>
               <select value={settings.sourceLanguage} onChange={(event) => onChange({ ...settings, sourceLanguage: event.target.value as SourceLanguage })}>
