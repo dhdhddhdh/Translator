@@ -12,7 +12,6 @@ export type SavedModelConfig = {
   provider: TranslationProvider;
   baseUrl: string;
   model: string;
-  apiKey: string;
 };
 
 export type AppSettings = {
@@ -76,6 +75,7 @@ export type TranslationCanvas = {
 export type TranslationPayload = {
   sourceText: string;
   translatedText: string;
+  formattedText?: string;
   blocks?: TranslationBlock[];
   canvas?: TranslationCanvas;
   model?: string;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { SourceLanguage, TargetLanguage, TranslationBlock, TranslationPayload } from "../electron/main/types";
 import "./styles.css";
@@ -15,7 +15,7 @@ const labels = {
   retry: "\u91cd\u65b0\u7ffb\u8bd1",
   pin: "\u56fa\u5b9a",
   unpin: "\u53d6\u6d88\u56fa\u5b9a",
-  live: "\u5b9e\u65f6\u4e2d",
+  live: "\u7ffb\u8bd1\u4e2d",
   updated: "\u5df2\u66f4\u65b0",
   model: "\u6a21\u578b",
   layout: "\u7248\u9762",
@@ -38,18 +38,17 @@ const labels = {
   ru: "\u4fc4\u8bed"
 };
 
-function FloatingResultWindow() {
+function FloatingResultPanel() {
   const [payload, setPayload] = useState<TranslationPayload | null>(null);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("layout");
   const [textMode, setTextMode] = useState<TextMode>("translated");
-  const [copied, setCopied] = useState(false);
+  const [snackbar, setSnackbar] = useState("");
   const [busy, setBusy] = useState(false);
   const [pinned, setPinned] = useState(true);
 
   useEffect(() => {
     window.translatorApi.onResultUpdate((nextPayload) => {
       setPayload(nextPayload);
-      setCopied(false);
       setDisplayMode(defaultDisplayMode(nextPayload));
     });
   }, []);
@@ -62,8 +61,7 @@ function FloatingResultWindow() {
 
   async function copyResult() {
     await navigator.clipboard.writeText(getPlainText(payload, blocks, textMode));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    showSnackbar(labels.copied);
   }
 
   async function copyJson() {
@@ -77,8 +75,7 @@ function FloatingResultWindow() {
       2
     );
     await navigator.clipboard.writeText(json || "[]");
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    showSnackbar(labels.copied);
   }
 
   async function retry() {
@@ -93,6 +90,11 @@ function FloatingResultWindow() {
     }
   }
 
+  function showSnackbar(message: string) {
+    setSnackbar(message);
+    window.setTimeout(() => setSnackbar(""), 1400);
+  }
+
   return (
     <div className="result-window-shell">
       <section className="result-window-panel">
@@ -103,15 +105,32 @@ function FloatingResultWindow() {
               <span>{payload?.model ? `${labels.model}: ${payload.model}` : labels.empty}</span>
             </div>
           </div>
-          <StatusPill active={payload?.mode === "monitor"} />
+          <StatusChip active={payload?.mode === "monitor"} />
           <button className="result-close" onClick={() => void window.translatorApi.closeResultWindow()}>
             x
           </button>
         </header>
 
         <main className="result-window-body">
-          <ModeSwitcher value={displayMode} effectiveValue={effectiveMode} onChange={setDisplayMode} />
-          <TextModeSwitcher value={textMode} onChange={setTextMode} />
+          <SegmentedModeSwitch
+            label="\u663e\u793a\u6a21\u5f0f"
+            options={(["layout", "list", "text"] as DisplayMode[]).map((mode) => ({
+              value: mode,
+              label: modeLabel(mode),
+              active: displayMode === mode || effectiveMode === mode
+            }))}
+            onChange={(value) => setDisplayMode(value as DisplayMode)}
+          />
+          <SegmentedModeSwitch
+            label="\u6587\u672c\u663e\u793a"
+            subtle
+            options={(["translated", "source", "bilingual"] as TextMode[]).map((mode) => ({
+              value: mode,
+              label: textModeLabel(mode),
+              active: textMode === mode
+            }))}
+            onChange={(value) => setTextMode(value as TextMode)}
+          />
 
           <TranslationResultCard
             payload={payload}
@@ -123,7 +142,7 @@ function FloatingResultWindow() {
           {displayMode === "layout" && effectiveMode !== "layout" ? <div className="layout-fallback-note">{labels.fallback}</div> : null}
 
           <div className="result-window-actions">
-            <button onClick={() => void copyResult()}>{copied ? labels.copied : labels.copy}</button>
+            <button onClick={() => void copyResult()}>{labels.copy}</button>
             <button onClick={() => void copyJson()} disabled={!blocks.length}>{labels.copyJson}</button>
             <button onClick={() => void retry()} disabled={!payload?.sourceText || busy}>
               {busy ? "..." : labels.retry}
@@ -133,12 +152,13 @@ function FloatingResultWindow() {
             </button>
           </div>
         </main>
+        {snackbar ? <div className="snackbar result-snackbar">{snackbar}</div> : null}
       </section>
     </div>
   );
 }
 
-function StatusPill({ active }: { active: boolean }) {
+function StatusChip({ active }: { active: boolean }) {
   return (
     <span className={active ? "result-status is-live" : "result-status"}>
       <span />
@@ -147,36 +167,22 @@ function StatusPill({ active }: { active: boolean }) {
   );
 }
 
-function ModeSwitcher({
-  value,
-  effectiveValue,
+function SegmentedModeSwitch({
+  label,
+  options,
+  subtle,
   onChange
 }: {
-  value: DisplayMode;
-  effectiveValue: DisplayMode;
-  onChange: (value: DisplayMode) => void;
+  label: string;
+  options: Array<{ value: string; label: string; active: boolean }>;
+  subtle?: boolean;
+  onChange: (value: string) => void;
 }) {
   return (
-    <div className="result-mode-switcher" aria-label="\u663e\u793a\u6a21\u5f0f">
-      {(["layout", "list", "text"] as DisplayMode[]).map((mode) => (
-        <button
-          key={mode}
-          className={value === mode || effectiveValue === mode ? "is-active" : ""}
-          onClick={() => onChange(mode)}
-        >
-          {modeLabel(mode)}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TextModeSwitcher({ value, onChange }: { value: TextMode; onChange: (value: TextMode) => void }) {
-  return (
-    <div className="result-mode-switcher subtle" aria-label="\u6587\u672c\u663e\u793a">
-      {(["translated", "source", "bilingual"] as TextMode[]).map((mode) => (
-        <button key={mode} className={value === mode ? "is-active" : ""} onClick={() => onChange(mode)}>
-          {textModeLabel(mode)}
+    <div className={subtle ? "result-mode-switcher subtle" : "result-mode-switcher"} aria-label={label}>
+      {options.map((option) => (
+        <button key={option.value} className={option.active ? "is-active" : ""} onClick={() => onChange(option.value)}>
+          {option.label}
         </button>
       ))}
     </div>
@@ -218,16 +224,37 @@ function LayoutTranslationCanvas({
   blocks: TranslationBlock[];
   textMode: TextMode;
 }) {
+  const shellRef = useRef<HTMLElement | null>(null);
+  const [viewport, setViewport] = useState({ width: 360, height: 240 });
+
+  useEffect(() => {
+    const element = shellRef.current;
+    if (!element) return;
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect();
+      setViewport({
+        width: Math.max(220, Math.floor(rect.width - 16)),
+        height: Math.max(140, Math.floor(rect.height - 16))
+      });
+    };
+
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const canvas = payload.canvas ?? inferCanvas(blocks);
   const safeWidth = Math.max(1, canvas?.width ?? 1);
   const safeHeight = Math.max(1, canvas?.height ?? 1);
-  const scale = Math.min(1, 468 / safeWidth, 270 / safeHeight);
-  const width = Math.max(320, Math.round(safeWidth * scale));
+  const scale = Math.min(2.4, Math.max(0.42, Math.min(viewport.width / safeWidth, viewport.height / safeHeight)));
+  const width = Math.max(220, Math.round(safeWidth * scale));
   const layoutItems = buildLayoutItems(blocks, scale, width);
-  const height = Math.max(150, Math.round(safeHeight * scale), Math.ceil(Math.max(...layoutItems.map((item) => item.top + item.height), 0) + 10));
+  const height = Math.max(viewport.height, Math.round(safeHeight * scale), Math.ceil(Math.max(...layoutItems.map((item) => item.top + item.height), 0) + 10));
 
   return (
-    <section className="layout-result-shell">
+    <section ref={shellRef} className="layout-result-shell">
       <div className="layout-translation-canvas" style={{ width, height }}>
         {layoutItems.map((item) => {
           const { block } = item;
@@ -292,6 +319,7 @@ function BlockText({ block, textMode }: { block: TranslationBlock; textMode: Tex
 }
 
 function defaultDisplayMode(payload: TranslationPayload | null): DisplayMode {
+  if (payload?.formattedText) return "text";
   const blocks = payload?.blocks ?? [];
   if (!blocks.length || !blocks.some((block) => block.box)) return "text";
   if (blocks.length > 120) return "list";
@@ -325,13 +353,13 @@ function buildLayoutItems(blocks: TranslationBlock[], scale: number, canvasWidth
       const textLength = (block.translatedText || block.sourceText).trim().length;
       const sourceLength = block.sourceText.trim().length;
       const left = Math.max(0, box.x * scale);
-      const baseWidth = Math.max(64, box.width * scale);
+      const baseWidth = Math.max(72, box.width * scale);
       const needsExpansion = textLength > 18 || textLength > Math.max(10, sourceLength * 1.35);
-      const availableWidth = Math.max(80, canvasWidth - left - 8);
-      const width = Math.min(availableWidth, needsExpansion ? Math.max(baseWidth, Math.min(280, availableWidth)) : baseWidth);
-      const charsPerLine = Math.max(4, Math.floor(width / 7.2));
+      const availableWidth = Math.max(90, canvasWidth - left - 8);
+      const width = Math.min(availableWidth, needsExpansion ? Math.max(baseWidth, Math.min(Math.max(280, canvasWidth * 0.56), availableWidth)) : baseWidth);
+      const charsPerLine = Math.max(4, Math.floor(width / 8.6));
       const estimatedLines = Math.max(1, Math.ceil(textLength / charsPerLine));
-      const height = Math.max(24, box.height * scale, estimatedLines * 22 + 12);
+      const height = Math.max(22, box.height * scale, estimatedLines * 18 + 8);
 
       return {
         block,
@@ -388,6 +416,7 @@ function inferCanvas(blocks: TranslationBlock[]) {
 
 function getPlainText(payload: TranslationPayload | null, blocks: TranslationBlock[], textMode: TextMode) {
   if (!payload) return "";
+  if (textMode === "translated" && payload.formattedText) return payload.formattedText;
   if (!blocks.length) return textMode === "source" ? payload.sourceText : payload.translatedText;
 
   return blocks
@@ -431,4 +460,4 @@ function targetLabel(target?: TargetLanguage) {
   return labels.zhCn;
 }
 
-createRoot(document.getElementById("result-root")!).render(<FloatingResultWindow />);
+createRoot(document.getElementById("result-root")!).render(<FloatingResultPanel />);

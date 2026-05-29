@@ -13,7 +13,8 @@ type UiStatus =
   | "no-text";
 
 const text = {
-  appName: "\u5c4f\u5e55\u7ffb\u8bd1",
+  appName: "\u55b5\u8bd1",
+  appWindowTitle: "\u55b5\u8bd1 - Screen Translator",
   appSub: "Auto Detect \u2192 \u7b80\u4f53\u4e2d\u6587",
   screenshot: "\u622a\u56fe\u7ffb\u8bd1",
   chooseRealtime: "\u9009\u62e9\u5b9e\u65f6\u533a\u57df",
@@ -25,7 +26,7 @@ const text = {
   source: "\u67e5\u770b\u8bc6\u522b\u539f\u6587",
   hideSource: "\u6536\u8d77\u8bc6\u522b\u539f\u6587",
   selectingTip: "\u62d6\u62fd\u9009\u62e9\u533a\u57df\uff0cEnter \u786e\u8ba4\uff0cEsc \u53d6\u6d88\u3002",
-  resultShown: "\u7ffb\u8bd1\u7ed3\u679c\u5df2\u5728\u72ec\u7acb\u7a97\u53e3\u663e\u793a",
+  resultShown: "",
   resultWaiting: "\u5c31\u7eea\uff1a\u6309 F2 \u622a\u56fe\uff0c\u6216\u9009\u62e9\u5b9e\u65f6\u533a\u57df\u3002",
   refresh: "\u5237\u65b0",
   shortcutPrefix: "\u5feb\u6377\u952e",
@@ -67,15 +68,21 @@ const text = {
   savedModels: "\u5df2\u4fdd\u5b58\u6a21\u578b",
   selectModel: "\u9009\u62e9\u6a21\u578b\u914d\u7f6e",
   saveModel: "\u4fdd\u5b58\u5f53\u524d\u914d\u7f6e",
+  modelPresetNote: "\u6a21\u578b\u9884\u8bbe\u53ea\u4fdd\u5b58 Base URL \u548c\u6a21\u578b\uff0c\u4e0d\u4fdd\u5b58 API Key",
+  accountKey: "\u8d26\u53f7 API Key",
   deleteModel: "\u5220\u9664",
   modelName: "\u914d\u7f6e\u540d\u79f0",
   newConfig: "\u65b0\u5efa\u914d\u7f6e",
+  savedToast: "\u8bbe\u7f6e\u5df2\u4fdd\u5b58",
+  tlsVerify: "TLS \u8bc1\u4e66\u9a8c\u8bc1",
+  tlsEnabled: "\u542f\u7528\uff08\u63a8\u8350\uff09",
+  tlsDisabled: "\u7981\u7528\uff08\u4ec5\u81ea\u7b7e\u540d\u8bc1\u4e66\uff09",
   apiNote: "\u63a5\u53e3\u9700\u8981\u517c\u5bb9 OpenAI Chat Completions",
   idle: "\u5f85\u547d",
   selecting: "\u9009\u62e9\u533a\u57df\u4e2d",
   capturing: "\u8bc6\u522b\u4e2d",
   translating: "\u7ffb\u8bd1\u4e2d",
-  monitoring: "\u5b9e\u65f6\u4e2d",
+  monitoring: "\u7ffb\u8bd1\u4e2d",
   failed: "\u5931\u8d25",
   missingKey: "\u672a\u8bbe\u7f6e Key",
   noText: "\u672a\u8bc6\u522b\u5230\u6587\u5b57"
@@ -110,9 +117,9 @@ function AppShell() {
   const [status, setStatus] = useState<UiStatus>("idle");
   const [sourceText, setSourceText] = useState("");
   const [error, setError] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [sourceOpen, setSourceOpen] = useState(false);
+  const [, setSettingsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [snackbar, setSnackbar] = useState("");
   const [realtimeActive, setRealtimeActive] = useState(false);
   const [hasExternalResult, setHasExternalResult] = useState(false);
 
@@ -140,6 +147,10 @@ function AppShell() {
       setRealtimeActive(active);
       setStatus(active ? "monitoring" : "idle");
     });
+    window.translatorApi.onSettingsUpdated((nextSettings) => {
+      setSettings(nextSettings);
+      setRealtimeActive(nextSettings.realtimeEnabled);
+    });
   }, []);
 
   async function saveCurrentSettings() {
@@ -152,6 +163,8 @@ function AppShell() {
       setSettings(next);
       await window.translatorApi.setOpacity(next.opacity);
       setSettingsOpen(false);
+      setSnackbar(text.savedToast);
+      window.setTimeout(() => setSnackbar(""), 1600);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : text.saveFailed);
       setStatus("failed");
@@ -231,27 +244,34 @@ function AppShell() {
       ...settings,
       provider: model.provider,
       baseUrl: model.baseUrl,
-      model: model.model,
-      apiKey: model.apiKey
+      model: model.model
     });
   }
 
-  function saveCurrentAsModelConfig(name: string) {
-    if (!name.trim()) return;
+  async function saveCurrentAsModelConfig(name: string) {
+    if (!name.trim()) return false;
     const id = `custom-${Date.now()}`;
     const newConfig: SavedModelConfig = {
       id,
       name: name.trim(),
       provider: settings.provider,
       baseUrl: settings.baseUrl,
-      model: settings.model,
-      apiKey: settings.apiKey
+      model: settings.model
     };
-    setSettings({
+    const nextSettings = {
       ...settings,
       savedModels: [...settings.savedModels, newConfig]
-    });
-    return id;
+    };
+
+    try {
+      const saved = await window.translatorApi.saveSettings(nextSettings);
+      setSettings(saved);
+      return true;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : text.saveFailed);
+      setStatus("failed");
+      return false;
+    }
   }
 
   function deleteSavedModel(id: string) {
@@ -267,22 +287,28 @@ function AppShell() {
   return (
     <div className={`app-shell compact-shell theme-${settings.theme}`}>
       <section className={realtimeActive ? "compact-panel is-monitoring" : "compact-panel"}>
-        <TitleBar
+        <MaterialTitleBar
           status={currentStatus}
           languageRoute={languageRoute}
-          onSettings={() => setSettingsOpen(true)}
+          onSettings={() => void window.translatorApi.openSettingsWindow()}
           onMinimize={() => void window.translatorApi.minimizeWindow()}
           onClose={() => void window.translatorApi.closeWindow()}
         />
 
         <main className="compact-main">
+          <ToolSection
+            title={`◉ 翻译模式: ${realtimeActive ? "实时监控" : "快速模式"}`}
+            meta={`${statusLabel(currentStatus)}  ${text.refresh} ${(settings.refreshIntervalMs / 1000).toFixed(1)}s`}
+          >
           <ActionButtons
             shortcut={settings.shortcut}
             realtimeActive={realtimeActive}
             onScreenshot={() => void startScreenshot()}
             onRealtime={() => void toggleRealtime()}
           />
+          </ToolSection>
 
+          <ToolSection title={"▣ 翻译引擎"} meta={settings.provider}>
           <CompactInfoBar
             status={currentStatus}
             model={settings.model}
@@ -290,40 +316,49 @@ function AppShell() {
             refreshIntervalMs={settings.refreshIntervalMs}
             realtimeActive={realtimeActive}
           />
+          </ToolSection>
 
-          {status === "selecting" ? <div className="selecting-hint">{text.selectingTip}</div> : null}
-          {error ? <div className="compact-error">{error}</div> : null}
+          <ToolSection title={"■ 当前状态"} meta={languageRoute}>
+            <div className="state-grid">
+              <button className="state-tile" onClick={() => void window.translatorApi.openSettingsWindow()}>
+                <span>⚙</span>
+                <strong>API 设置</strong>
+              </button>
+              <button className="state-tile" onClick={() => void window.translatorApi.minimizeWindow()}>
+                <span>◇</span>
+                <strong>最小化</strong>
+              </button>
+              <button className="state-tile" onClick={() => void window.translatorApi.closeWindow()}>
+                <span>↪</span>
+                <strong>退出</strong>
+              </button>
+            </div>
+          </ToolSection>
 
-          <EmptyStateCard missingKey={!settings.apiKey} hasResult={hasExternalResult} onSettings={() => setSettingsOpen(true)} />
+          {status === "selecting" ? <LoadingState>{text.selectingTip}</LoadingState> : null}
+          {error ? <ErrorState>{error}</ErrorState> : null}
 
-          <SourceTextPanel
-            open={sourceOpen}
-            sourceText={sourceText}
-            languageRoute={languageRoute}
-            onToggle={() => setSourceOpen((open) => !open)}
-          />
+          <EmptyState missingKey={!settings.apiKey} hasResult={hasExternalResult} onSettings={() => void window.translatorApi.openSettingsWindow()} />
         </main>
       </section>
-
-      {settingsOpen ? (
-        <SettingsDialog
-          settings={settings}
-          saving={saving}
-          onChange={setSettings}
-          onApplyProvider={applyProviderTemplate}
-          onTargetChange={updateTargetLanguage}
-          onSelectSavedModel={selectSavedModel}
-          onSaveModelConfig={saveCurrentAsModelConfig}
-          onDeleteSavedModel={deleteSavedModel}
-          onClose={() => setSettingsOpen(false)}
-          onSave={() => void saveCurrentSettings()}
-        />
-      ) : null}
+      {snackbar ? <Snackbar>{snackbar}</Snackbar> : null}
     </div>
   );
 }
 
-function TitleBar({
+function ToolSection({ title, meta, children }: { title: string; meta?: string; children: ReactNode }) {
+  return (
+    <section className="tool-section">
+      <header className="tool-section-title">
+        <strong>{title}</strong>
+        {meta ? <span>{meta}</span> : null}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function MaterialTitleBar({
   status,
   languageRoute,
   onSettings,
@@ -338,28 +373,28 @@ function TitleBar({
 }) {
   return (
     <header className="compact-titlebar window-drag-layer">
+      <div className="app-window-title">{text.appWindowTitle}</div>
       <div className="compact-brand">
-        <span className="app-glyph">{"\u6587A"}</span>
         <div>
           <strong>{text.appName}</strong>
           <span>{languageRoute || text.appSub}</span>
         </div>
       </div>
-      <StatusBadge status={status} />
+      <StatusChip status={status} />
       <div className="compact-window-actions">
         <SettingsButton onClick={onSettings} />
-        <IconButton label={text.minimize} onClick={onMinimize}>
+        <MaterialIconButton label={text.minimize} onClick={onMinimize}>
           -
-        </IconButton>
-        <IconButton label={text.close} onClick={onClose} danger>
+        </MaterialIconButton>
+        <MaterialIconButton label={text.close} onClick={onClose} danger>
           x
-        </IconButton>
+        </MaterialIconButton>
       </div>
     </header>
   );
 }
 
-function StatusBadge({ status }: { status: UiStatus }) {
+function StatusChip({ status }: { status: UiStatus }) {
   return (
     <span className={`status-badge status-${status}`}>
       <span className="status-dot" />
@@ -370,9 +405,9 @@ function StatusBadge({ status }: { status: UiStatus }) {
 
 function SettingsButton({ onClick }: { onClick: () => void }) {
   return (
-    <IconButton label={text.settings} onClick={onClick}>
+    <MaterialIconButton label={text.settings} onClick={onClick}>
       {"\u2699"}
-    </IconButton>
+    </MaterialIconButton>
   );
 }
 
@@ -427,7 +462,7 @@ function CompactInfoBar({
   );
 }
 
-function EmptyStateCard({
+function EmptyState({
   missingKey,
   hasResult,
   onSettings
@@ -445,6 +480,8 @@ function EmptyStateCard({
     );
   }
 
+  if (hasResult) return null;
+
   return (
     <section className="empty-state-card">
       <span>{hasResult ? text.resultShown : text.resultWaiting}</span>
@@ -452,7 +489,7 @@ function EmptyStateCard({
   );
 }
 
-function SourceTextPanel({
+function SourceTextExpansion({
   open,
   sourceText,
   languageRoute,
@@ -492,7 +529,7 @@ function SettingsDialog({
   onApplyProvider: (provider: TranslationProvider) => void;
   onTargetChange: (target: TargetLanguage) => void;
   onSelectSavedModel: (id: string) => void;
-  onSaveModelConfig: (name: string) => string | undefined;
+  onSaveModelConfig: (name: string) => Promise<boolean>;
   onDeleteSavedModel: (id: string) => void;
   onClose: () => void;
   onSave: () => void;
@@ -504,21 +541,23 @@ function SettingsDialog({
         <nav className="settings-rail">
           <strong>{text.settings}</strong>
           <span className="rail-item active">API</span>
-          <span className="rail-item">{text.target}</span>
-          <span className="rail-item">OCR</span>
-          <span className="rail-item">{text.shortcut}</span>
         </nav>
 
         <section className="settings-content">
           <header>
             <strong>API {"\u8bbe\u7f6e"}</strong>
-            <IconButton label={text.close} onClick={onClose}>
-              x
-            </IconButton>
+            <div className="settings-header-actions">
+              <MaterialIconButton label={text.minimize} onClick={() => void window.translatorApi.minimizeWindow()}>
+                -
+              </MaterialIconButton>
+              <MaterialIconButton label={text.close} onClick={onClose}>
+                x
+              </MaterialIconButton>
+            </div>
           </header>
 
           <div className="settings-grid">
-            <Field label={text.savedModels}>
+            <Field label={text.savedModels} hint={text.modelPresetNote}>
               <div className="saved-models-row">
                 <select
                   value=""
@@ -542,7 +581,7 @@ function SettingsDialog({
                 <option value="custom">{text.custom}</option>
               </select>
             </Field>
-            <Field label="API Key">
+            <Field label={text.accountKey}>
               <input type="password" value={settings.apiKey} onChange={(event) => onChange({ ...settings, apiKey: event.target.value })} placeholder="sk-..." />
             </Field>
             <Field label="Base URL">
@@ -550,6 +589,9 @@ function SettingsDialog({
             </Field>
             <Field label={text.model}>
               <input type="text" value={settings.model} onChange={(event) => onChange({ ...settings, model: event.target.value })} />
+            </Field>
+            <Field label={text.shortcut}>
+              <input value={settings.shortcut} onChange={(event) => onChange({ ...settings, shortcut: event.target.value || "F2" })} placeholder="F2" />
             </Field>
             <Field label={text.saveModel}>
               <div className="save-model-row">
@@ -562,8 +604,9 @@ function SettingsDialog({
                 <button
                   className="save-model-btn"
                   onClick={() => {
-                    const id = onSaveModelConfig(newModelName);
-                    if (id) setNewModelName("");
+                    void onSaveModelConfig(newModelName).then((saved) => {
+                      if (saved) setNewModelName("");
+                    });
                   }}
                   disabled={!newModelName.trim()}
                 >
@@ -585,42 +628,10 @@ function SettingsDialog({
                 </div>
               </Field>
             )}
-            <Field label="TLS 验证">
+            <Field label={text.tlsVerify}>
               <select value={settings.tlsVerify ? "true" : "false"} onChange={(event) => onChange({ ...settings, tlsVerify: event.target.value === "true" })}>
-                <option value="true">启用（推荐）</option>
-                <option value="false">禁用（自签名证书）</option>
-              </select>
-            </Field>
-            <Field label={text.sourceLanguage}>
-              <select value={settings.sourceLanguage} onChange={(event) => onChange({ ...settings, sourceLanguage: event.target.value as SourceLanguage })}>
-                <option value="auto">{text.sourceAuto}</option>
-                <option value="en">{text.english}</option>
-                <option value="ja">{text.japanese}</option>
-                <option value="ko">{text.korean}</option>
-                <option value="zh-TW">{text.traditionalChinese}</option>
-                <option value="fr">{text.french}</option>
-                <option value="de">{text.german}</option>
-                <option value="es">{text.spanish}</option>
-                <option value="ru">{text.russian}</option>
-              </select>
-            </Field>
-            <Field label={text.target}>
-              <select value={settings.targetLanguageCode} onChange={(event) => onTargetChange(event.target.value as TargetLanguage)}>
-                <option value="zh-CN">{text.simplifiedChinese}</option>
-                <option value="zh-TW">{text.traditionalChinese}</option>
-                <option value="en">{text.english}</option>
-                <option value="ja">{text.japanese}</option>
-                <option value="ko">{text.korean}</option>
-              </select>
-            </Field>
-            <Field label={text.shortcut}>
-              <input value={settings.shortcut} onChange={(event) => onChange({ ...settings, shortcut: event.target.value || "F2" })} />
-            </Field>
-            <Field label={text.ocr}>
-              <select value={settings.ocrEngine} onChange={(event) => onChange({ ...settings, ocrEngine: event.target.value as AppSettings["ocrEngine"] })}>
-                <option value="auto">{text.ocrAuto}</option>
-                <option value="windows">{text.ocrWindows}</option>
-                <option value="tesseract">{text.ocrTesseract}</option>
+                <option value="true">{text.tlsEnabled}</option>
+                <option value="false">{text.tlsDisabled}</option>
               </select>
             </Field>
             <Field label={text.interval}>
@@ -656,16 +667,17 @@ function SettingsDialog({
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label className="settings-field">
       <span>{label}</span>
       {children}
+      {hint ? <small>{hint}</small> : null}
     </label>
   );
 }
 
-function IconButton({
+function MaterialIconButton({
   label,
   children,
   danger,
@@ -681,6 +693,23 @@ function IconButton({
       {children}
     </button>
   );
+}
+
+function LoadingState({ children }: { children: ReactNode }) {
+  return (
+    <div className="selecting-hint">
+      <span className="mini-spinner" />
+      {children}
+    </div>
+  );
+}
+
+function ErrorState({ children }: { children: ReactNode }) {
+  return <div className="compact-error">{children}</div>;
+}
+
+function Snackbar({ children }: { children: ReactNode }) {
+  return <div className="snackbar">{children}</div>;
 }
 
 function mapRuntimeStatus(status: string): UiStatus {

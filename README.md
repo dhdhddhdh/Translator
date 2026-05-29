@@ -1,45 +1,15 @@
-# Windows 实时屏幕翻译软件 MVP
+# 喵译 - 屏幕翻译器
 
-基于 Electron + React + TypeScript 的 Windows 桌面翻译工具原型。
+Windows 桌面实时屏幕翻译工具，截图即翻译。
 
-## 已实现
+## 功能
 
-- 透明玻璃风格悬浮窗
-- `F2` 全局快捷键触发区域截图翻译
-- 全屏遮罩拖拽选区
-- OCR 文字识别，支持 `Windows OCR / Tesseract / 自动回退`
-- DeepSeek `deepseek-v4-flash` 翻译
-- 悬浮窗展示 OCR 原文与中文结果
-- API Key 本地保存
-- 基础错误提示
-- Windows `exe` 安装包构建配置
-
-## 开发命令
-
-```bash
-npm install
-npm run dev
-```
-
-## 构建命令
-
-```bash
-npm run build
-npm run dist:win
-```
-
-- `npm run build`：构建应用代码
-- `npm run dist:win`：生成 Windows 安装包，输出到 `release/`
-
-## 当前实现说明
-
-- OCR 默认使用“自动优先 Windows OCR”，Windows OCR 不可用时回退到 `tesseract.js`
-- API Key 使用 Electron `safeStorage` 可用时加密保存
-- 首版优先完成截图翻译 MVP，实时周期监控区域暂未启用
-
-## 下一步建议
-
-- 替换为 Windows OCR 或 PaddleOCR，提高中文/界面文字识别率
-- 增加托盘与最小化到托盘
-- 增加实时监控区域与去重缓存逻辑
-- 增加翻译历史和请求缓存
+- **截图翻译**：按下全局快捷键 F2，拖拽选择屏幕任意区域，自动 OCR 识别并翻译
+- **实时监控**：选定屏幕区域后持续监控，文字变化时自动识别和翻译，无需反复截图
+- **翻译结果**：浮动置顶窗口展示，支持版面/列表/纯文本三种显示模式，以及仅译文/仅原文/双语对照三种文本模式，译文可一键复制
+- **多语言支持**：可识别 9 种语言，可翻译为 5 种目标语言（简繁中文、英、日、韩）
+- **双引擎 OCR**：优先使用 Windows 原生 OCR，自动回退 Tesseract.js，兼顾速度和兼容性
+- **AI 翻译**：兼容 OpenAI Chat Completions 接口，内置 DeepSeek、OpenAI、OpenRouter、SiliconFlow 四套模型预设，支持自定义 API
+- **版面翻译**：OCR 结构化识别后逐块翻译，通过 AI 重新排版，在结果面板中按原始位置对齐展示译文
+- **系统托盘**：最小化到托盘，后台静默运行
+- **主题切换**：内置深色 / 浅色主题

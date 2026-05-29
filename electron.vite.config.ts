@@ -34,7 +34,8 @@ export default defineConfig({
           index: path.resolve("index.html"),
           overlay: path.resolve("overlay.html"),
           region: path.resolve("region.html"),
-          result: path.resolve("result.html")
+          result: path.resolve("result.html"),
+          settings: path.resolve("settings.html")
         }
       }
     }

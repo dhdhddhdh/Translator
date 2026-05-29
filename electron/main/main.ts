@@ -15,13 +15,14 @@ import { electronApp, is, optimizer } from "@electron-toolkit/utils";
 import { captureSelection } from "./capture";
 import { recognizeTextFromBuffer, shutdownOcr } from "./ocr";
 import { loadSettings, saveSettings } from "./settings";
-import { translateBlocksToChinese, translateToChinese } from "./translate";
+import { formatTranslatedBlocks, translateBlocksToChinese, translateToChinese } from "./translate";
 import type { AppSettings, OcrBlock, SelectionBounds, SelectionMode, TranslationCanvas, TranslationPayload } from "./types";
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let regionWindow: BrowserWindow | null = null;
 let resultWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let settingsCache: AppSettings;
 let overlayMode: SelectionMode = "single";
@@ -45,17 +46,56 @@ function registerWindow(win: BrowserWindow) {
     if (win === overlayWindow) overlayWindow = null;
     if (win === regionWindow) regionWindow = null;
     if (win === resultWindow) resultWindow = null;
+    if (win === settingsWindow) settingsWindow = null;
   });
 
   return win;
 }
 
+function createSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.show();
+    settingsWindow.focus();
+    return;
+  }
+
+  const parentBounds = mainWindow?.getBounds();
+  settingsWindow = registerWindow(new BrowserWindow({
+    x: parentBounds ? parentBounds.x + parentBounds.width + 12 : undefined,
+    y: parentBounds ? parentBounds.y : undefined,
+    width: 430,
+    height: 520,
+    minWidth: 360,
+    minHeight: 420,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    resizable: true,
+    webPreferences: {
+      preload: path.join(__dirname, "../preload/index.js"),
+      sandbox: false
+    }
+  }));
+
+  settingsWindow.on("ready-to-show", () => {
+    settingsWindow?.show();
+  });
+
+  if (is.dev && process.env.ELECTRON_RENDERER_URL) {
+    void settingsWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}/settings.html`);
+  } else {
+    void settingsWindow.loadFile(path.join(__dirname, "../renderer/settings.html"));
+  }
+}
+
 function createMainWindow() {
   mainWindow = registerWindow(new BrowserWindow({
-    width: 460,
-    height: 430,
-    minWidth: 400,
-    minHeight: 340,
+    width: 430,
+    height: 520,
+    minWidth: 360,
+    minHeight: 420,
     alwaysOnTop: true,
     frame: false,
     transparent: true,
@@ -113,16 +153,16 @@ function createResultWindow(payload?: TranslationPayload) {
   }
 
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const width = 520;
-  const height = 430;
+  const width = 420;
+  const height = 380;
 
   resultWindow = registerWindow(new BrowserWindow({
     x: Math.round(display.workArea.x + display.workArea.width - width - 24),
     y: Math.round(display.workArea.y + 78),
     width,
     height,
-    minWidth: 380,
-    minHeight: 320,
+    minWidth: 340,
+    minHeight: 280,
     frame: false,
     transparent: true,
     backgroundColor: "#00000000",
@@ -165,7 +205,7 @@ function createRegionWindow(selection: SelectionBounds) {
     backgroundColor: "#00000000",
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    resizable: true,
     movable: true,
     focusable: false,
     hasShadow: false,
@@ -178,17 +218,11 @@ function createRegionWindow(selection: SelectionBounds) {
   regionWindow.setAlwaysOnTop(true, "screen-saver");
 
   regionWindow.on("move", () => {
-    if (!regionWindow || regionWindow.isDestroyed() || !monitorRegion) return;
-    const [x, y] = regionWindow.getPosition();
-    const display = screen.getDisplayNearestPoint({ x, y });
-    monitorRegion = {
-      ...monitorRegion,
-      x,
-      y,
-      displayId: display.id,
-      scaleFactor: display.scaleFactor
-    };
-    lastMonitorText = "";
+    syncRegionWindowBounds();
+  });
+
+  regionWindow.on("resize", () => {
+    syncRegionWindowBounds();
   });
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
@@ -196,6 +230,23 @@ function createRegionWindow(selection: SelectionBounds) {
   } else {
     void regionWindow.loadFile(path.join(__dirname, "../renderer/region.html"));
   }
+}
+
+function syncRegionWindowBounds() {
+  if (!regionWindow || regionWindow.isDestroyed() || !monitorRegion) return;
+  const [x, y] = regionWindow.getPosition();
+  const [width, height] = regionWindow.getSize();
+  const display = screen.getDisplayNearestPoint({ x, y });
+  monitorRegion = {
+    ...monitorRegion,
+    x,
+    y,
+    width,
+    height,
+    displayId: display.id,
+    scaleFactor: display.scaleFactor
+  };
+  lastMonitorText = "";
 }
 
 function createOverlayWindow(mode: SelectionMode) {
@@ -440,9 +491,13 @@ async function translateOcrBlocks(blocks: OcrBlock[], canvas?: TranslationCanvas
     const translatedText = translatedBlocks
       .map((block) => block.translatedText || "\u672a\u7ffb\u8bd1")
       .join("\n");
+    const formattedText = await formatTranslatedBlocks(translatedBlocks, settingsCache, {
+      signal: activeTranslationController.signal
+    });
     const payload: TranslationPayload = {
       sourceText,
-      translatedText,
+      translatedText: formattedText || translatedText,
+      formattedText: formattedText || undefined,
       blocks: translatedBlocks,
       canvas
     };
@@ -584,6 +639,13 @@ function closeResultWindow() {
   resultWindow = null;
 }
 
+function closeSettingsWindow() {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.destroy();
+  }
+  settingsWindow = null;
+}
+
 function destroyAllWindows() {
   for (const win of allWindows) {
     if (!win.isDestroyed()) {
@@ -595,6 +657,7 @@ function destroyAllWindows() {
   overlayWindow = null;
   regionWindow = null;
   resultWindow = null;
+  settingsWindow = null;
 }
 
 function cleanupAppResources(options: { destroyWindows?: boolean; removeIpc?: boolean } = {}) {
@@ -630,6 +693,9 @@ function cleanupAppResources(options: { destroyWindows?: boolean; removeIpc?: bo
     ipcMain.removeHandler("translation:stop-realtime");
     ipcMain.removeHandler("window:minimize");
     ipcMain.removeHandler("window:close");
+    ipcMain.removeHandler("settings:open-window");
+    ipcMain.removeHandler("settings:close-window");
+    ipcMain.removeHandler("settings:minimize");
     ipcMain.removeHandler("window:set-opacity");
     ipcMain.removeHandler("result:close");
     ipcMain.removeAllListeners("selection:cancel");
@@ -701,6 +767,7 @@ app.whenReady().then(() => {
       }, Math.max(800, settingsCache.refreshIntervalMs));
     }
 
+    sendToMain("settings-updated", settingsCache);
     return settingsCache;
   });
   ipcMain.handle("translation:start-selection", (_, mode: SelectionMode = "single") => {
@@ -731,6 +798,9 @@ app.whenReady().then(() => {
     }
     quitApp();
   });
+  ipcMain.handle("settings:open-window", () => createSettingsWindow());
+  ipcMain.handle("settings:close-window", () => closeSettingsWindow());
+  ipcMain.handle("settings:minimize", () => settingsWindow?.minimize());
   ipcMain.handle("window:set-opacity", (_, value: number) => applyOpacity(value));
   ipcMain.handle("result:close", () => closeResultWindow());
 

@@ -10,6 +10,9 @@ const api = {
   stopRealtime: () => ipcRenderer.invoke("translation:stop-realtime") as Promise<void>,
   minimizeWindow: () => ipcRenderer.invoke("window:minimize") as Promise<void>,
   closeWindow: () => ipcRenderer.invoke("window:close") as Promise<void>,
+  openSettingsWindow: () => ipcRenderer.invoke("settings:open-window") as Promise<void>,
+  closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window") as Promise<void>,
+  minimizeSettingsWindow: () => ipcRenderer.invoke("settings:minimize") as Promise<void>,
   closeResultWindow: () => ipcRenderer.invoke("result:close") as Promise<void>,
   setOpacity: (value: number) => ipcRenderer.invoke("window:set-opacity", value) as Promise<void>,
   confirmSelection: (selection: SelectionBounds) => ipcRenderer.send("selection:confirm", selection),
@@ -25,6 +28,8 @@ const api = {
   ) => ipcRenderer.on("overlay-context", (_, payload) => callback(payload)),
   onRealtimeState: (callback: (active: boolean) => void) =>
     ipcRenderer.on("realtime-state", (_, active) => callback(active)),
+  onSettingsUpdated: (callback: (settings: AppSettings) => void) =>
+    ipcRenderer.on("settings-updated", (_, settings) => callback(settings)),
   onStatus: (callback: (status: string) => void) => ipcRenderer.on("translation-status", (_, status) => callback(status)),
   onStream: (callback: (text: string) => void) => ipcRenderer.on("translation-stream", (_, text) => callback(text)),
   onComplete: (callback: (payload: TranslationPayload) => void) =>
