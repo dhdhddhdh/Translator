@@ -564,6 +564,69 @@ button {
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.1);
 }
 
+.saved-models-row select {
+  width: 100%;
+}
+
+.save-model-row {
+  display: flex;
+  gap: 6px;
+}
+
+.save-model-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.save-model-btn {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.save-model-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.save-model-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.delete-model-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.delete-model-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.delete-model-item button {
+  border: none;
+  background: none;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
 .settings-content footer {
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }

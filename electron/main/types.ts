@@ -6,6 +6,15 @@ export type SourceLanguage = "auto" | "en" | "ja" | "ko" | "zh-TW" | "fr" | "de"
 export type TargetLanguage = "zh-CN" | "zh-TW" | "en" | "ja" | "ko";
 export type CloseBehavior = "minimize-to-tray" | "exit";
 
+export type SavedModelConfig = {
+  id: string;
+  name: string;
+  provider: TranslationProvider;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+};
+
 export type AppSettings = {
   apiKey: string;
   baseUrl: string;
@@ -23,6 +32,7 @@ export type AppSettings = {
   realtimeEnabled: boolean;
   theme: "dark" | "light";
   tlsVerify: boolean;
+  savedModels: SavedModelConfig[];
 };
 
 export type SelectionBounds = {

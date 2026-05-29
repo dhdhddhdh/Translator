@@ -298,6 +298,14 @@ function applyOpacity(opacity: number) {
   mainWindow?.setOpacity(1);
 }
 
+function applyTlsVerify(tlsVerify: boolean) {
+  if (tlsVerify) {
+    delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  } else {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  }
+}
+
 function emitRealtimeState(active: boolean) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send("realtime-state", active);
@@ -672,6 +680,7 @@ app.whenReady().then(() => {
   });
 
   settingsCache = loadSettings();
+  applyTlsVerify(settingsCache.tlsVerify);
   nativeTheme.themeSource = settingsCache.theme === "light" ? "light" : "dark";
   createMainWindow();
   createTray();
@@ -682,6 +691,7 @@ app.whenReady().then(() => {
     settingsCache = saveSettings(nextSettings);
     registerShortcuts();
     applyOpacity(settingsCache.opacity);
+    applyTlsVerify(settingsCache.tlsVerify);
     nativeTheme.themeSource = settingsCache.theme === "light" ? "light" : "dark";
 
     if (monitorTimer) {

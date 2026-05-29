@@ -1,11 +1,51 @@
 import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { AppSettings } from "./types";
+import type { AppSettings, SavedModelConfig } from "./types";
 
-type StoredSettings = Omit<AppSettings, "apiKey"> & {
+type StoredSavedModel = Omit<SavedModelConfig, "apiKey"> & {
   encryptedApiKey: string;
 };
+
+type StoredSettings = Omit<AppSettings, "apiKey" | "savedModels"> & {
+  encryptedApiKey: string;
+  savedModels: StoredSavedModel[];
+};
+
+const defaultSavedModels: SavedModelConfig[] = [
+  {
+    id: "builtin-deepseek",
+    name: "DeepSeek",
+    provider: "deepseek",
+    baseUrl: "https://api.deepseek.com/chat/completions",
+    model: "deepseek-v4-flash",
+    apiKey: ""
+  },
+  {
+    id: "builtin-openai",
+    name: "OpenAI",
+    provider: "openai",
+    baseUrl: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-4.1-mini",
+    apiKey: ""
+  },
+  {
+    id: "builtin-openrouter",
+    name: "OpenRouter",
+    provider: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1/chat/completions",
+    model: "openai/gpt-4.1-mini",
+    apiKey: ""
+  },
+  {
+    id: "builtin-siliconflow",
+    name: "SiliconFlow",
+    provider: "siliconflow",
+    baseUrl: "https://api.siliconflow.cn/v1/chat/completions",
+    model: "Qwen/Qwen2.5-7B-Instruct",
+    apiKey: ""
+  }
+];
 
 const defaultSettings: AppSettings = {
   apiKey: "",
@@ -13,7 +53,7 @@ const defaultSettings: AppSettings = {
   model: "deepseek-v4-flash",
   provider: "deepseek",
   sourceLanguage: "auto",
-  targetLanguage: "\u4e2d\u6587",
+  targetLanguage: "中文",
   targetLanguageCode: "zh-CN",
   closeBehavior: "exit",
   shortcut: "F2",
@@ -23,7 +63,8 @@ const defaultSettings: AppSettings = {
   opacity: 1,
   realtimeEnabled: false,
   theme: "dark",
-  tlsVerify: true
+  tlsVerify: true,
+  savedModels: defaultSavedModels
 };
 
 function getSettingsPath() {
@@ -48,6 +89,28 @@ function decrypt(value: string) {
   }
 }
 
+function encryptSavedModels(models: SavedModelConfig[]): StoredSavedModel[] {
+  return models.map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.provider,
+    baseUrl: m.baseUrl,
+    model: m.model,
+    encryptedApiKey: encrypt(m.apiKey)
+  }));
+}
+
+function decryptSavedModels(stored: StoredSavedModel[]): SavedModelConfig[] {
+  return stored.map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.provider,
+    baseUrl: m.baseUrl,
+    model: m.model,
+    apiKey: decrypt(m.encryptedApiKey)
+  }));
+}
+
 export function loadSettings(): AppSettings {
   const filePath = getSettingsPath();
   if (!fs.existsSync(filePath)) {
@@ -57,12 +120,18 @@ export function loadSettings(): AppSettings {
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as Partial<StoredSettings>;
+
+    const savedModels = parsed.savedModels
+      ? decryptSavedModels(parsed.savedModels)
+      : defaultSavedModels;
+
     const settings = {
       ...defaultSettings,
       ...parsed,
-      apiKey: decrypt(parsed.encryptedApiKey ?? "")
+      apiKey: decrypt(parsed.encryptedApiKey ?? ""),
+      savedModels
     };
-    if (/[\u00c0-\u00ff]{2,}|\\u[0-9a-fA-F]{4}/.test(settings.targetLanguage)) {
+    if (/[À-ÿ]{2,}|\\u[0-9a-fA-F]{4}/.test(settings.targetLanguage)) {
       settings.targetLanguage = defaultSettings.targetLanguage;
     }
     if (settings.opacity < 0.85) {
@@ -80,7 +149,8 @@ export function saveSettings(nextSettings: AppSettings): AppSettings {
 
   const payload: StoredSettings = {
     ...nextSettings,
-    encryptedApiKey: encrypt(nextSettings.apiKey)
+    encryptedApiKey: encrypt(nextSettings.apiKey),
+    savedModels: encryptSavedModels(nextSettings.savedModels)
   };
 
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");

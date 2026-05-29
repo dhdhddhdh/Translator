@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import type { AppSettings, SourceLanguage, TargetLanguage, TranslationProvider } from "../electron/main/types";
+import type { AppSettings, SavedModelConfig, SourceLanguage, TargetLanguage, TranslationProvider } from "../electron/main/types";
 
 type UiStatus =
   | "idle"
@@ -64,6 +64,12 @@ const text = {
   save: "\u4fdd\u5b58",
   cancel: "\u53d6\u6d88",
   saveFailed: "\u4fdd\u5b58\u8bbe\u7f6e\u5931\u8d25",
+  savedModels: "\u5df2\u4fdd\u5b58\u6a21\u578b",
+  selectModel: "\u9009\u62e9\u6a21\u578b\u914d\u7f6e",
+  saveModel: "\u4fdd\u5b58\u5f53\u524d\u914d\u7f6e",
+  deleteModel: "\u5220\u9664",
+  modelName: "\u914d\u7f6e\u540d\u79f0",
+  newConfig: "\u65b0\u5efa\u914d\u7f6e",
   apiNote: "\u63a5\u53e3\u9700\u8981\u517c\u5bb9 OpenAI Chat Completions",
   idle: "\u5f85\u547d",
   selecting: "\u9009\u62e9\u533a\u57df\u4e2d",
@@ -91,7 +97,8 @@ const defaultSettings: AppSettings = {
   opacity: 1,
   realtimeEnabled: false,
   theme: "dark",
-  tlsVerify: true
+  tlsVerify: true,
+  savedModels: []
 };
 
 export function App() {
@@ -217,6 +224,43 @@ function AppShell() {
     });
   }
 
+  function selectSavedModel(id: string) {
+    const model = settings.savedModels.find((m) => m.id === id);
+    if (!model) return;
+    setSettings({
+      ...settings,
+      provider: model.provider,
+      baseUrl: model.baseUrl,
+      model: model.model,
+      apiKey: model.apiKey
+    });
+  }
+
+  function saveCurrentAsModelConfig(name: string) {
+    if (!name.trim()) return;
+    const id = `custom-${Date.now()}`;
+    const newConfig: SavedModelConfig = {
+      id,
+      name: name.trim(),
+      provider: settings.provider,
+      baseUrl: settings.baseUrl,
+      model: settings.model,
+      apiKey: settings.apiKey
+    };
+    setSettings({
+      ...settings,
+      savedModels: [...settings.savedModels, newConfig]
+    });
+    return id;
+  }
+
+  function deleteSavedModel(id: string) {
+    setSettings({
+      ...settings,
+      savedModels: settings.savedModels.filter((m) => m.id !== id)
+    });
+  }
+
   const currentStatus: UiStatus = !settings.apiKey ? "missing-key" : status;
   const languageRoute = `${sourceLabel(settings.sourceLanguage)} \u2192 ${targetLabel(settings.targetLanguageCode)}`;
 
@@ -268,6 +312,9 @@ function AppShell() {
           onChange={setSettings}
           onApplyProvider={applyProviderTemplate}
           onTargetChange={updateTargetLanguage}
+          onSelectSavedModel={selectSavedModel}
+          onSaveModelConfig={saveCurrentAsModelConfig}
+          onDeleteSavedModel={deleteSavedModel}
           onClose={() => setSettingsOpen(false)}
           onSave={() => void saveCurrentSettings()}
         />
@@ -433,6 +480,9 @@ function SettingsDialog({
   onChange,
   onApplyProvider,
   onTargetChange,
+  onSelectSavedModel,
+  onSaveModelConfig,
+  onDeleteSavedModel,
   onClose,
   onSave
 }: {
@@ -441,9 +491,13 @@ function SettingsDialog({
   onChange: (settings: AppSettings) => void;
   onApplyProvider: (provider: TranslationProvider) => void;
   onTargetChange: (target: TargetLanguage) => void;
+  onSelectSavedModel: (id: string) => void;
+  onSaveModelConfig: (name: string) => string | undefined;
+  onDeleteSavedModel: (id: string) => void;
   onClose: () => void;
   onSave: () => void;
 }) {
+  const [newModelName, setNewModelName] = useState("");
   return (
     <div className="settings-backdrop">
       <aside className="settings-drawer">
@@ -464,6 +518,21 @@ function SettingsDialog({
           </header>
 
           <div className="settings-grid">
+            <Field label={text.savedModels}>
+              <div className="saved-models-row">
+                <select
+                  value=""
+                  onChange={(event) => {
+                    if (event.target.value) onSelectSavedModel(event.target.value);
+                  }}
+                >
+                  <option value="">{text.selectModel}</option>
+                  {settings.savedModels.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+            </Field>
             <Field label={text.provider}>
               <select value={settings.provider} onChange={(event) => onApplyProvider(event.target.value as TranslationProvider)}>
                 <option value="deepseek">DeepSeek</option>
@@ -482,6 +551,40 @@ function SettingsDialog({
             <Field label={text.model}>
               <input type="text" value={settings.model} onChange={(event) => onChange({ ...settings, model: event.target.value })} />
             </Field>
+            <Field label={text.saveModel}>
+              <div className="save-model-row">
+                <input
+                  type="text"
+                  value={newModelName}
+                  onChange={(event) => setNewModelName(event.target.value)}
+                  placeholder={text.modelName}
+                />
+                <button
+                  className="save-model-btn"
+                  onClick={() => {
+                    const id = onSaveModelConfig(newModelName);
+                    if (id) setNewModelName("");
+                  }}
+                  disabled={!newModelName.trim()}
+                >
+                  {text.saveModel}
+                </button>
+              </div>
+            </Field>
+            {settings.savedModels.filter((m) => m.id.startsWith("custom-")).length > 0 && (
+              <Field label={text.deleteModel}>
+                <div className="delete-model-list">
+                  {settings.savedModels
+                    .filter((m) => m.id.startsWith("custom-"))
+                    .map((m) => (
+                      <span key={m.id} className="delete-model-item">
+                        {m.name}
+                        <button onClick={() => onDeleteSavedModel(m.id)}>x</button>
+                      </span>
+                    ))}
+                </div>
+              </Field>
+            )}
             <Field label="TLS 验证">
               <select value={settings.tlsVerify ? "true" : "false"} onChange={(event) => onChange({ ...settings, tlsVerify: event.target.value === "true" })}>
                 <option value="true">启用（推荐）</option>
